@@ -1,18 +1,74 @@
-name: GitHub Actions Build and Deploy Demo
+name: Publish And Deploy Demo
 on:
   push:
-    branches:
-      - main
+  # 不是每一次push都会触发自动部署，而是提交了一个标签例如这里是以提交了以v开头的标签才触发
+    tags:
+      - 'v*'
+
 jobs:
   build-and-deploy:
+  # 运行的环境
     runs-on: ubuntu-latest
     steps:
+
+    # 下载源码
     - name: Checkout
       uses: actions/checkout@master
-    - name: Build and Deploy
-      uses: JamesIves/github-pages-deploy-action@master
+
+    # 打包构建
+    - name: Build
+      uses: actions/setup-node@master
+    - run: npm install
+    - run: npm run build
+    - run: tar -zcvf release.tgz .nuxt static nuxt.config.js package.json package-lock.json pm2.config.json
+
+    # 发布 Release
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@master
       env:
-        ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-        BRANCH: gh-pages
-        FOLDER: dist
-        BUILD_SCRIPT: npm install && npm run build
+        GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+
+    # 上传构建结果到 Release
+    - name: Upload Release Asset
+      id: upload-release-asset
+      uses: actions/upload-release-asset@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+      with:
+        # 上传地址
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        # 上传文件
+        asset_path: ./release.tgz
+        # 上传的文件名
+        asset_name: release.tgz
+        asset_content_type: application/x-tgz
+
+    # 部署到服务器
+    - name: Deploy
+      uses: appleboy/ssh-action@master
+      with:
+        # 远程服务器的host
+        host: ${{ secrets.HOST }}
+        # 远程服务器的用户名
+        username: ${{ secrets.USERNAME }}
+        # 远程服务器的密码
+        password: ${{ secrets.PASSWORD }}
+        # 远程服务器的端口号
+        port: ${{ secrets.PORT }}
+        # 进入远程服务器的项目目录，必须确保有这个目录
+        # 通过wget 下载上一步上传构建结果到 Release的包到服务器
+        # 通过tar解压压缩包
+        # 安装依赖
+        # 运行脚本启动项目
+        script: |
+          cd /root/lagou-training-camp-03-03
+          wget https://github.com/ding-hao/lagou-training-camp-03-03/releases/latest/download/release.tgz -O release.tgz
+          tar zxvf release.tgz
+          npm install --production
+          pm2 reload pm2.config.json
