@@ -2,7 +2,7 @@ export default {
     router: {
       linkActiveClass: 'active',
       extendRoutes(routes, resolve) {
-        //   清空nuxt基于pages默认生成的路由规则数组 
+        //   清空nuxt基于pages默认生成的路由规则数组
         routes.splice(0)
         routes.push(...[
             {
